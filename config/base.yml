@@ -22,7 +22,10 @@ docker:
   client:
     socketPath: '/tmp/docker.sock'
 notifications:
+  github:
+    global: 'false'
   slack:
+    global: 'true'
     channel: '#builds'
     icon_emoji: ':robot_face:'
     username: 'Roger'

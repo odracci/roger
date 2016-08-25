@@ -387,7 +387,7 @@ Note that:
 Once the build is complete, it pushes a notification to a slack channel mentioned in the config
 ![slack channel notification](https://raw.githubusercontent.com/namshi/roger/master/bin/images/notification-slack.png)
 
-To enable slack notification the build.yml file can be updated with the slack parameter in the notification block:
+To enable slack notification for individual projects the build.yml file can be updated with the slack parameter in the notification block:
 
 ``` yaml
 my-project:
@@ -397,12 +397,12 @@ my-project:
     - slack
 ```
 
-and in roger`s confif.yml:
+for enabling slack notification for all the projects, the base.yml can be updated as:
 
 ```
 notifications:
   slack:
-    url: 'https://slack-url-with-token.com'
+    global: 'true'
     channel: '#channel-name'
     icon_emoji: ':slack-emoji:'
     username: 'Roger'

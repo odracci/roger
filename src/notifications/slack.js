@@ -31,5 +31,5 @@ module.exports = function (project, options) {
   };
 
 slack.onError = function (err) {
-  console.log('API error:', err);
+  console.log('SLACK API error:', err);
 };
