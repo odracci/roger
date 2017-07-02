@@ -67,6 +67,80 @@ function extractAndRepackage(project, imageId, builderId, buildId, buildLogger, 
   });
 }
 
+docker.pullImage = function pullImage(buildId, from, imageId, dockerOptions, buildLogger) {
+  return Q.promise(function(resolve, reject) {
+    var opts = {
+      authconfig: docker.getAuth(buildId, buildLogger)
+    };
+
+    var tag = imageId + ((dockerOptions.dockerfile) ? '-builder' : '');
+
+    docker.client.pull(from, opts, function (err, stream) {
+      if (err) {
+        return reject(err)
+      }
+
+      stream.on('data', function(out) {
+        var result = {};
+
+        try {
+          result = JSON.parse(out.toString('utf-8'));
+        } catch (err) {
+          buildLogger.error('[%s] %s', tag, err);
+        }
+
+        if (result.error) {
+          buildLogger.error('[%s] %s', tag, result.error);
+          reject(result.error);
+          return;
+        }
+
+        if (result.progress) {
+          result.status = result.status + ' ' + result.progress;
+        }
+
+        buildLogger.info('[%s] %s', tag, result.stream || result.status);
+      });
+
+
+      stream.on('end', function(err) {
+        if (err) {
+          return reject(err)
+        }
+
+        resolve()
+      })
+    })
+  })
+
+};
+
+docker.extractFromImageName = function extractFromImageName(dockerFile) {
+  return Q.promise(function (resolve, reject) {
+    var from;
+
+    fs.readFile(dockerFile, function (err, data) {
+      if (err) {
+        return reject(err)
+      }
+
+      data.toString().split('\n').forEach(function (line) {
+        var match = line.match(/^FROM +(.*)$/);
+        if (match) {
+          from = match[1]
+        }
+      });
+
+      if (!from) {
+        reject('FROM keyword not found.');
+      }
+
+      resolve(from);
+    });
+
+  });
+};
+
 /**
  * Builds a docker image.
  *
@@ -126,11 +200,12 @@ docker.buildImage = function(project, tarPath, imageId, buildId, buildLogger, do
  *
  * @return promise
  */
-docker.tag = function(imageId, buildId, branch) {
+docker.tag = function(imageId, buildId, branch, optionalTag) {
   var deferred  = Q.defer();
-  var image     = docker.client.getImage(imageId);
+  var image     = docker.client.getImage(imageId + ':' + branch);
+  optionalTag = optionalTag || branch;
 
-  image.tag({repo: imageId, tag: branch}, function() {
+  image.tag({repo: imageId, tag: optionalTag}, function() {
     deferred.resolve(image);
   });
 
@@ -147,33 +222,26 @@ docker.tag = function(imageId, buildId, branch) {
  *
  * @see http://stackoverflow.com/questions/24814714/docker-remote-api-pull-from-docker-hub-private-registry
  */
-docker.getAuth = function(buildId, registry, buildLogger) {
-  var options = {};
+docker.getAuth = function(buildId, buildLogger) {
+  var options = config.get('auth.dockerhub', {}, {});
 
-  if (registry === 'dockerhub') {
+  if (options.length > 0) {
     buildLogger.info('[%s] Image should be pushed to the DockerHub @ hub.docker.com', buildId);
 
-    options = config.get('auth.dockerhub');
+    options.serveraddress = options.address || '127.0.0.1';
 
-    if (!options || !options.username || !options.email || !options.password) {
-      buildLogger.error('It seems that the build "%s" should be pushed to the dockerhub', buildId);
-      buildLogger.error('but you forgot to add your credentials in the config file "%s"', argv.config);
+    if (!options || !options.username || !options.password) {
+      buildLogger.error('It seems that the build "%s" should be pushed to a private registry', buildId);
+      buildLogger.error('but you forgot to add your credentials in the config file');
       buildLogger.error();
       buildLogger.error('Please specify:');
       buildLogger.error(' - username');
-      buildLogger.error(' - email address');
       buildLogger.error(' - password');
       buildLogger.error();
       buildLogger.error('See https://github.com/namshi/roger#configuration');
 
       throw new Error('Fatality! MUAHAHUAAHUAH!');
     }
-
-    /**
-     * Ok, we can do better.
-     * But it's 5.39 in the morning.
-     */
-    options.serveraddress = '127.0.0.1';
   }
 
   return options;
@@ -222,7 +290,7 @@ docker.push = function(image, buildId, uuid, branch, registry, buildLogger) {
         }
       });
     }
-  }, docker.getAuth(buildId, registry, buildLogger));
+  }, docker.getAuth(buildId, buildLogger));
 
   return deferred.promise;
 };

@@ -10,21 +10,29 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
     find /var/log -type f | while read f; do echo -ne '' > $f; done;
 
-RUN mkdir /tmp/roger-builds
-RUN mkdir /tmp/roger-builds/logs
-RUN mkdir /tmp/roger-builds/tars
-RUN mkdir /tmp/roger-builds/sources
+RUN mkdir /tmp/roger-builds \
+    && mkdir /tmp/roger-builds/logs \
+    && mkdir /tmp/roger-builds/tars \
+    && mkdir /tmp/roger-builds/sources
 
-COPY . /src
+COPY ./db /db
 
-RUN npm cache clean
+COPY ./src/client/package.json /src/src/client/
 
 WORKDIR /src/src/client
 RUN npm install
-RUN npm run build
 
+COPY ./package.json /src/
+COPY ./npm-shrinkwrap.json /src/
 WORKDIR /src
 RUN npm install
 
-EXPOSE  8080
-CMD ["node", "src/index.js", "--config", "/config.yml"]
+COPY . /src
+
+WORKDIR /src/src/client
+RUN npm run build
+
+WORKDIR /src
+
+EXPOSE 8080
+CMD ["node", "src/index.js", "--config", "/src/config.yml"]

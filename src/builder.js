@@ -98,6 +98,7 @@ builder.schedule = function(repo, gitBranch, uuid, dockerOptions) {
       project.homepage        = repo;
       project['github-token'] = githubToken;
       project.registry        = project.registry || '127.0.0.1:5000';
+      project.tag             = project.tag || gitBranch;
 
       console.log('project ' + name + ': ', utils.obfuscate(project));
       if (!!project.build) {
@@ -151,6 +152,20 @@ builder.build = function(project, uuid, path, gitBranch, branch, dockerOptions) 
 
     return tar.create(tarPath,  dockerfilePath + '/', buildLogger, {buildId: buildId});
   }).then(function() {
+    var dockerfilePath = path;
+
+    if (project.dockerfilePath) {
+      dockerfilePath = p.join(path, project.dockerfilePath);
+    }
+    var dockerFile = dockerfilePath + '/Dockerfile';
+    buildLogger.info('docker file path %s ', dockerFile);
+
+    return docker.extractFromImageName(dockerFile);
+  }).then(function(from) {
+    buildLogger.info('[%s] pull image %s', buildId, from);
+
+    return docker.pullImage(buildId, from, imageId, dockerOptions, buildLogger);
+  }).then(function() {
     buildLogger.info('[%s] Created tarball for %s', buildId, uuid);
 
     return docker.buildImage(project, tarPath, imageId + ':' + branch, buildId, buildLogger, dockerOptions, uuid);
@@ -158,7 +173,7 @@ builder.build = function(project, uuid, path, gitBranch, branch, dockerOptions) 
     buildLogger.info('[%s] %s built succesfully', buildId, uuid);
     buildLogger.info('[%s] Tagging %s', buildId, uuid);
 
-    return docker.tag(imageId, buildId, branch, buildLogger);
+    return docker.tag(imageId, buildId, branch, project.tag);
   }).then(function(image) {
     return publisher.publish(docker.client, buildId, project, buildLogger).then(function() {
       return image;
@@ -173,7 +188,7 @@ builder.build = function(project, uuid, path, gitBranch, branch, dockerOptions) 
     buildLogger.info('[%s] Ran after-build hooks for %s', buildId, uuid);
     buildLogger.info('[%s] Pushing %s to %s', buildId, uuid, project.registry);
 
-    return docker.push(image, buildId, uuid, branch, project.registry, buildLogger);
+    return docker.push(image, buildId, uuid, project.tag, project.registry, buildLogger);
   }).then(function() {
     return storage.saveBuild(uuid, buildId, project.id, branch, 'passed');
   }).then(function() {
